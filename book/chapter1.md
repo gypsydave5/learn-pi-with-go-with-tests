@@ -108,7 +108,7 @@ jobs := make(chan Job)
 
 Channels carrying values. Fine, familiar, and each one requires us to have decided what a value *is*. Which is the problem: whatever we pick, we've picked something arbitrary, and the calculus isn't minimal any more, it's just small.
 
-But here's a thing you've certainly written:
+But here's a thing you've probably written when practising with channels in Go:
 
 ```go
 type Request struct {
@@ -119,88 +119,85 @@ type Request struct {
 requests <- Request{Data: "hello", Reply: make(chan Response)}
 ```
 
-The reply channel. Every Go programmer writes this within a fortnight of picking the language up, and it's more interesting than it looks: **you just sent a channel over a channel.** You handed a stranger the means of getting back to you. Before that send, nothing in the receiving goroutine could have referred to your reply channel - there was no expression it could have written. After it, there is.
+A reply channel. It's more exciting than it looks: **you just sent a channel over a channel.** You handed a stranger the means of getting back to you. Before that send, nothing in the receiving goroutine could have referred to your reply channel - there was no expression it could have written. After it, there is. Channels aren't just piping and wiring, they're first-class values in Go.
 
 You've met this shape before under other names. It's continuation-passing: rather than returning a value, you're handed somewhere to *put* the answer, and you put it there. It's also, at a grubbier scale, a webhook - here's a URL, call me back on it. The pattern keeps turning up because it's the only way to get an answer to someone whose address you didn't previously have.
 
-Hold onto the continuation-passing one. In chapter 9 it stops being an analogy and becomes the actual mechanism by which the λ-calculus turns into π-calculus terms.
-
-You've been doing the interesting part all along and calling it request/reply.
-
-So: what if that's the *only* thing you can send?
+So: what if a channel is the *only* thing you can send?
 
 ```go
 type Name chan Name
 ```
 
-A name is a channel is a name. And a name is a channel that can send a name. And a channel is a name that can send a channel.
+A name is a channel is a name. And a name is a channel that can send a name. And a channel is a name that can send a channel. Ok, all together now...
 
-That's the type system. Not a simplification for chapter one, not a starting point we extend later - that's the whole thing, for the rest of the book.
+This is the type system. Not an over-simplification for the sake of chapter one, not a starting point we fix later - that's the whole thing, for the rest of our book. No integers. No strings, no booleans, no functions, no structs. Just names. There are just **names**, and a name is a channel that carries names. Go's recursive type definitions let us write it down very neatly, which is lucky.
 
-No integers. No strings, no booleans, no functions, no structs. There are **names**, and a name is a channel that carries names. Go's recursive type definitions let us write it down literally, which is a piece of luck I've never entirely got over.
+Your reaction to this is probably that this isn't enough. I remember that feeling when I first saw the lambda-calculus. Let's just see if we _can_ just build up the whole of computer science from that tiny kernel.
 
-Your reaction to this should be that it obviously can't be enough. Hold onto that - it's the most productive feeling available to you right now. Chapter 8 builds the natural numbers out of it. Chapter 9 builds the λ-calculus out of it.
-
-For now, take it as a constraint with teeth: **if you can't say something with names alone, that's the calculus telling you something.** It isn't Go being inadequate, and it isn't me withholding a feature until chapter 4.
-
-Making one:
+Right, let's make a name:
 
 ```go
 s := make(Name)
 ```
 
-Unbuffered - the rule we're about to meet has an output *and* an input in it, and an unbuffered channel is exactly that rendezvous.[^async]
-
-[^async]: If you're wondering what happens with a buffered one: you get a different calculus. The asynchronous π-calculus is a real thing with its own literature, and it's just not this.
+Crkey, that was easy
 
 ---
 
 ## The only thing that happens
 
-Two operations and one rule joining them up.
+The pi calculus has but two operations in total, and a single simple rule to bring the two together. Let's see those operations first.
 
-**Output.** In the calculus this is `x̄y` - send the name `y` on the channel `x`:
+##### Output
+
+Sending something on a channel. In the π-calculus we write this as `x̄y`, which we read as "send the name `y` on the channel `x`". Well, that's not hard to translate into Go:
 
 ```go
 x <- y
 ```
 
-**Input.** `x(z)` - receive on `x`, and call whatever arrives `z`:
+##### Input 
+
+The other operation - receiving something on a channel. In the π-calculus we say `x(z)`, which we read as "receive on the channel `x`, and call whatever arrives `z"`. Again, I think we know what that looks like in Go:
 
 ```go
 z := <-x
 ```
 
-The overbar on the channel name is the output. It's the notation Milner used and it's what you'll meet in the literature, so we're going to live with it.
-
-> **A note on single letters.** The overbar is a combining character, so it only sits over one letter - `c̄h` looks like a mistake rather than a channel called `ch`. This is why π-calculus papers use single-letter names for everything, and why we will too, in the calculus. In the Go, names can be as long as they need to be.
+The overbar on the channel name - the `x̄` - is saying "output on x". It's the notation Milner used and it's what you'll meet in all the literature, so you may as well get used to reading it now.
 
 ### Where does any of this happen?
 
-Names, and the two things you can do with one. That isn't yet enough to write anything down, because both of those things need somebody to be *doing* them - and, much more importantly, need somebody *else* to be doing the other one.
+So we've got our type - the `Name`. And we've got two operations - output and input, send and receive. That's all fine and dandy but it still needs somebody to *do* them - and, well, not just one person. This is all about communication, we we actually need at least one other thing to handle the other side. One sends, one receives. This is what we're working towards here - two independent things, running at the same time, meeting. Almost all the notation from here on exists to describe that, rather than to describe names.
 
-That's the actual subject. Two independent things, running at the same time, meeting. Almost all the notation from here on exists to describe that, rather than to describe names.
+So we call that thing that _does_ the operation a **process**.  A process is a thing that runs and interacts. That's the whole definition, and the vagueness is deliberate - we never say what a process is *made of*, only what it can do. We write them (in the syntax we're using) with capital letters, `P`, `Q`, `R`, the way we've been writing `x` and `y` for names.
 
-So: a **process** is a thing that runs and interacts. That's the whole definition, and the vagueness is deliberate - we never say what a process is *made of*, only what it can do. We write them with capital letters, `P`, `Q`, `R`, the way we've been writing `x` and `y` for names.
+We need three pieces of very specific process notation to get us off the ground, and then finally we can state the one magic rule.
 
-Three pieces of notation and then we can state the rule.
+#### zero
+`0` is the inert process. Finished. Does nothing, offers nothing, nobody can interact with it. Exited. Slipped off this mortal coil. Dead. Unresponsive. You fill in your favourite metaphors.
 
-**`0`** is the inert process. Finished. Does nothing, offers nothing, nobody can interact with it.
+What does that look like in Go? You know at the end of a function when it stops doing something? That.
 
-**The dot** is "and then". `x̄y.P` reads *output `y` on `x`, and then carry on as `P`*, and everything to the right of the dot stays frozen until that output has actually happened.
+#### a dot
 
-If "and then `P`" makes it look like we're *naming* the process `P`, that's the notation being unhelpful and your eyes are working fine. `P` is a variable - a **metavariable**, which is to say it belongs to the language we use to talk about terms, not to the terms themselves. It stands in for however much more process there is, and in a real term you fill it in:
+A dot, a `.`, is "and then". `x̄y.P` reads *output `y` on `x`, and then carry on like `P`*. Nothing to the right of the dot will actually happen until that output has actually happened. It's "blocking".
+
+If "and then `P`" makes it look like we're *naming* the process `P`, that's the notation being unhelpful and your eyes are working fine. `P` is a variable - akshually a **metavariable**, which is to say it belongs to the language we use to talk about terms, not to the terms themselves. It stands in for however much more of a process there is, and in a real processes you'd just fill it in:
 
 ```
-x̄y.P            where P is w̄v.0
+x̄y.P            where P is w̄v.0 ... so we just say
 x̄y.w̄v.0         the same term, written out
 ```
 
-There's no `P` left in the finished thing. It's the same trick as `λz.M` - the `M` isn't the function's name, it's the body, and it vanishes as soon as you write an actual body.[^defs]
+There's no `P` left in the finished thing.[^defs]
 
 [^defs]: Worth keeping this separate from something you may meet elsewhere. Some presentations *do* let you name a process, with definitions like `A(x) ≜ x(z).āz.0`, and then `A` genuinely is a name for a process and genuinely does appear inside terms. It's a convenience for writing recursive behaviour down without going mad. We won't need it - we get repetition from `!` in chapter 6 - and `P` and `Q` are never that.
 
-This is the only sequencing in the language - there is no `;`. If you want two things in order, you chain prefixes: `x(z).y(w).P` inputs on `x`, and *then* on `y`, and the second one cannot possibly go first.
+This is the only sequencing in the language. If you want two things in order, you chain prefixes: `x(z).y(w).P` gets an input on `x`, and *then* gets one on `y`.  The second one cannot possibly go first.
+
+What does it look like in Go? Well, you know how you write one line of Go, and then you write another line of Go underneath it? And you know how the first one happens before the second one? That. It looks like that. This is not rocket science.
 
 And look - chain a couple of prefixes onto a `0` and you've written a whole process:
 
@@ -208,41 +205,45 @@ And look - chain a couple of prefixes onto a `0` and you've written a whole proc
 x(z).ȳz.0
 ```
 
-Take a name off `x`, pass it along on `y`, stop. An input, an output, and a full stop. No boilerplate, nothing declared, nothing hiding - that's a complete program in the language, and you could read it. Cute.
+Take a name off `x`, pass it along on `y`, stop. An input, an output, and a full stop. No boilerplate, nothing declared, nothing hiding, behold! that's a complete program in the language, and you could read it. Well done you.
 
-Notice that the prefix notation already assumed a process was coming. The dot's entire job is to say what happens next, so there had to be a next.
+#### Parallel composition
 
-**Parallel composition**, `P | Q`, is P and Q running at the same time. Both live, neither waiting on the other, and either one free to interact with anything else that's about. It gets a chapter of its own, because "at the same time" has more in it than you'd think, but "at the same time" will do for now.
+Parallel composition - or the pipe, `|` . So when we write `P | Q`, what we mean is P and Q running at the same time. Both live, neither waiting on the other, and either one free to interact with anything else that's about. It'll get a chapter of its own, because "at the same time" has more in it than you'd think, but "at the same time" will do for now.
 
-And now the rule:
+And how does that look in Go? C'mon, you've probably already worked it out. Sure, ok, let's do it. You know when you've got a process in Go - like a function. And you know when you start that little process going with a little `go` in front of it? And you know when you've done that more than once so you've got a few of the little guys off running at once? That. It's a bit harder than "the end of a function" or "a new line", but it's really shouldn't be taxing you.
+
+### THE ONE RULE ~~TO RULE THEM ALL~~
+
+And now (finally) the rule:
 
 ```
 x̄y.P  |  x(z).Q   →   P  |  Q{y/z}
 ```
 
-Two processes, side by side. One is offering an output on `x`, the other an input on `x`. They meet, and the whole thing becomes something new: the two continuations, still side by side, with a substitution applied to the one that received.
+Two processes, side by side. One does `P` things. One does `Q` things. The `P` flavour one is offering an output on `x`, the `Q` flavour one an input on `x`. They meet, ~~kiss briefly,~~ and the whole thing becomes something new: the two continuations, still side by side, with a substitution applied to the one that received. Now all the `z`s in `Q` are all `y`s. Wow did `P` just get `Q` pregnant?
 
 > **`Q{y/z}`** is read "Q with y for z". Every occurrence of `z` in `Q` is replaced by `y`.
 >
 > It's easy to get backwards, and the notation is no help at all. The **new** name goes on top; the **old** one underneath. It's a fraction you're cancelling: `z` goes away, `y` arrives.
 >
-> If you're unsure, reason it out from the rule rather than trying to remember. The input `x(z).Q` chose the letter `z` as a placeholder, before it had any idea what would arrive. Then `y` arrived. Obviously it's `z` that has to go.
+> An simpler (but less general example) makes is easy to see: 
 >
 > ```
-> x̄y.0  |  x(z).āz.0   →   0  |  āy.0
+>x̄y.0  |  x(z).āz.0   →   0  |  āy.0
 > ```
 >
 > The `z` became a `y`. Never the other way round.[^subst]
 
 [^subst]: Some authors write `Q[y/z]`, and a few use an arrow, `Q[z ↦ y]`, which has the virtue of being impossible to misread. The `{y/z}` form is the most common and we'll stick with it. There's also a wrinkle I'm skating over: strictly it's every *free* occurrence of `z` that gets replaced, because `Q` might contain its own binder that happens to use the same letter, and that one is a different `z` entirely. Chapter 2.
 
-Look at that substitution, because you've seen it before:
+You may have seen this substitution flavour before:
 
 ```
 (λz.Q) y   →   Q{y/z}
 ```
 
-Same rule. β-reduction is what happens when a function meets an argument, and juxtaposition on the page is what decides they've met. Communication is what happens when an output meets an input, and *naming the same channel* is what decides they've met.
+Same rule, but in fancy lambda-land it's called a β-reduction, and it's what happens when function meets argument. Communication is what happens when an output meets an input, and *naming the same channel* is what decides they've met.
 
 The π-calculus takes β-reduction and splits it into two halves that have to go and find each other first. Everything difficult and everything interesting falls out of that one change.
 
@@ -250,7 +251,7 @@ The π-calculus takes β-reduction and splits it into two halves that have to go
 
 ## The first test
 
-Let's watch one communication happen.
+Having fun yet? Let's watch one communication happen in Go.
 
 ```go
 package pi
@@ -287,13 +288,13 @@ Three things to notice.
 
 ## What a process is in Go
 
-A process is a function that takes names and returns nothing.
+Mapping a process to Go is, as I've said, easy: it's just a function that takes names and returns nothing.
 
 ```go
 func SomeProcess(x Name, y Name) { ... }
 ```
 
-Three rules.
+Three rules when we're playing around to stay safe and not mess up our π:
 
 **It only touches the names it was given.** No closures reaching out into the enclosing scope, no package-level state, no globals. If a process knows about a name, somebody handed it that name. That's the only way there is.
 
@@ -304,16 +305,16 @@ Three rules.
 ```go
 func Recv(x Name, out Name) {
 	z := <-x    // x(z).
-	Send(out, z) //   ōut z   ← a call: this IS the continuation
+	Send(out, z) //   ōut z   ← a call: this IS the continuation - the dot
 }
 
 func Both(x Name, y Name) {
 	go P(x)     // P | Q
-	go Q(y)     //   ← go: this is parallel composition
+	go Q(y)     //   ← go: this is parallel composition - the pipe
 }
 ```
 
-A process blocked on a channel is a process sitting at a prefix, waiting to interact. Not running, not finished - waiting. That's a perfectly respectable state and it's most of the state space.
+A process blocked on a channel is a process sitting at a dot, waiting to interact. Not running, not finished - waiting. That's a perfectly respectable state and it's most of the state space.
 
 Now notice what the signature *doesn't* tell you:
 
@@ -321,9 +322,7 @@ Now notice what the signature *doesn't* tell you:
 func SomeProcess(x Name, y Name)
 ```
 
-Which of those does it read from? Which does it write to? Both? Neither? You can't tell, and neither can the compiler, because there's one type and it hasn't got a direction. `Send` and `Recv` are about to have identical signatures and opposite behaviour.
-
-That should bother you. It's the gap that i/o types were invented to close, and session types after them, and we'll come back to it - but not for a while, because the untyped version has to make sense first.
+Which of those does it read from? Which does it write to? Both? Neither? You can't tell, and neither can the compiler, because there's one type and it hasn't got a direction. That should bother you a little, and we'll fix it with some types (but not how you're thinking). But first let's work on the untyped calculus.;
 
 ---
 
@@ -349,27 +348,34 @@ func TestTwoProcessesCommunicate(t *testing.T) {
 It won't compile, because those two processes don't exist yet. Here's what it wants:
 
 ```go
-// Send outputs payload on ch, then stops.
+// Send sends whatever the `payload` is on `ch`, and then stops.
 //
-//	x̄y.0        where x is ch, and y is payload
+// Which is π looks like:
+//
+// x̄y.0        
+// 
+// where x is ch, and y is payload
 func Send(ch Name, payload Name)
 
-// Recv inputs on ch, binding whatever arrives as z,
-// then outputs z on out.
+// Recv takes an input from `ch`, binding whatever arrives as `z`, and then sends `z` on the Name `out`, and then stops.
 //
-//	x(z).ȳz.0   where x is ch, and y is out
+// which in π looks like: 
+//
+// x(z).ȳz.0
+//
+// where x is ch, and y is out
 func Recv(ch Name, out Name)
 ```
 
 `0` is the inert process - the one that does nothing at all. In Go, that's the end of the function body.
 
-Each one is a line or two. Go and do it, I'll wait.
+Each one is a line or two. Have fun!
 
 ---
 
 ## The race, in the flesh
 
-Back at the start I claimed Church-Rosser was gone. Let's watch it go.
+Back at the start I said that Church-Rosser was gone. Well, let's watch it go.
 
 Here's the term we're going to write:
 
@@ -377,15 +383,13 @@ Here's the term we're going to write:
 x̄y.0  |  x(z).āz.0  |  x(z).b̄z.0
 ```
 
-Everything in there is something you've already met - the overbar, the dot, `0`, and `|` for two things running at the same time.[^par] So before you read on: say what it means, out loud, on your own. I'll wait again.
+Everything in there is something you've already met: the overbar, the dot, `0`, and `|` for two things running at the same time. So try and say what it means.
 
-[^par]: Parallel composition gets a chapter to itself, because it turns out to have more to it than "and also". For now, "and also" is fine.
+Now we do it together.
 
-Now together.
+There's a process that outputs the name `y` on channel `x`, and then stops. Running at the same time, a second process that takes something  off channel `x` and calls it `z`, and then it outputs that `z` on channel `a`, and then stops. And alongside both of those, a third process that takes something off channel `x `and calls _it_ `z`, which it then outputs on channel `b`, and then stops.
 
-There's a process that outputs the name `y` on channel `x`, and then stops. Running at the same time, a second process that takes a `z` off channel `x`, then outputs that `z` on channel `a`, then stops. And alongside both of those, a third process that takes a `z` off channel `x`, then outputs that `z` on channel `b`, then stops.
-
-Three processes. One message. Two of them want it.
+Three processes. One message. Two of them want it. FIGHT!
 
 In Go:
 
@@ -409,7 +413,7 @@ func TestTwoInputsOneOutput(t *testing.T) {
 }
 ```
 
-Run it with `go test -v -count=20` and read the log lines. You should see both.
+Run it with `go test -race -v -count=20` and read the log lines. You should see both.
 
 ### Reducing it, twice
 
@@ -443,15 +447,7 @@ Those two states are not the same state, and there's no sequence of reductions t
 
 Which is the `t.Log` line you just watched flip.
 
-You might be wondering where *we* are in that description.
-
-The term has three processes in it. The Go has four things running: those three, and the test, sitting on a `select`, waiting to see which of `a` or `b` delivers. That fourth one isn't in the term at all.
-
-That's deliberate, and it's the observer again. Everything on paper is *the system*; the test stands outside it and pokes. But it's a bit of a cheat, because the test is plainly doing something a process does - taking an input - and if it's doing process things then it ought to be writable as a process.
-
-It is. It's roughly `a(v).0 + b(v).0` - offer an input on `a` and an input on `b`, take whichever arrives, abandon the other. That `+` is choice, it's what `select` compiles to in our heads, and it's chapter 7. Until then the observer stays offstage, and when it comes onstage in chapter 10 it stops being a convenience and becomes the entire subject: what two processes *mean* turns out to be what an observer can tell apart.
-
-(You may also have noticed I'm leaving `0`s lying about in the reductions rather than tidying them up. `0 | āy.0` is obviously just `āy.0`. Saying *why* you're allowed to cross it out is chapter 3. Cross it out anyway.)
+You might be wondering where *we* are in that description. We'll talk about that later, promise.
 
 ### What the λ-calculus would have done
 
@@ -510,7 +506,9 @@ And that's rubbish, isn't it. It's slow. It's flaky - fifty milliseconds is eith
 
 That gap is most of why testing concurrent code is miserable, and it's usually where a book like this starts apologising and reaching for a longer sleep.
 
-We're not going to. This is what `testing/synctest` is for.
+We're not going to. This is what `testing/synctest` is for. 
+
+(YES GO YES YOU ARE THE BEST LANGUAGE)
 
 `synctest.Test` runs your test inside a **bubble** - it and every goroutine started within it. And inside the bubble:
 
@@ -520,9 +518,9 @@ synctest.Wait()
 
 `Wait` blocks until every *other* goroutine in the bubble is **durably blocked**: parked on a channel operation that only another goroutine in the same bubble could ever unblock.
 
-Read that with your π-calculus hat on. When `Wait` returns, no reduction is possible. Nothing can move without the observer moving first.
+Read that with your π-calculus hat on. When `Wait` returns, no reduction is possible. Nothing can move without the observer moving first. Everything has now been reduced to its simplest form. So for us, used like this, `synctest` is a π-calculus normal form detector, bundled in the Go standard library.
 
-It's a normal form detector, in the standard library.
+(YOU BEAUTIFUL GOPHER YOU YESSSSS GO ON MY SON)
 
 ```go
 func TestReceiveWithNoSenderIsStuck(t *testing.T) {
@@ -543,26 +541,15 @@ func TestReceiveWithNoSenderIsStuck(t *testing.T) {
 }
 ```
 
-No sleep, no timeout, no flake, and the claim it makes is the strong one.
+No sleep, no timeout, no flake, and you have a genuine guarantee that all the actions are over.
 
 ### One hazard, before it bites you
 
 If every goroutine in the bubble is durably blocked and nobody has called `Wait`, `synctest.Test` calls it a deadlock and fails the test.
 
-Which is awkward, because we just wrote a test asserting that a stuck process exists. Stuck is legal here.
+Which is awkward, because we just wrote a test asserting that a stuck process exists. Stuck is legal here. Stuck is _fine_ in π-calculus. We're just not a fan of it in working software. Mostly.
 
-So: **the observer must reach `Wait` before it parks.** The test goroutine holds the bubble open. If you block on a channel nothing will ever deliver on, you get a deadlock failure instead of the assertion you wanted - and that failure is about your test, not about the term.
-
-You will do this. Everyone does this.
-
----
-
-## What we've deliberately not done
-
-- **Parallel composition** as an idea in its own right. We've typed `go` a few times without saying what `P | Q` *means*, or why it's commutative. Chapter 3.
-- **Fresh names.** `make(Name)` is doing something significant - creating a name nobody else can get hold of, written `(νx)P` in the calculus - and I've walked straight past it. Chapter 4.
-- **Anything happening twice.** Every process here does one thing and dies. Chapter 6, where we meet `!P`.
-- **Choice.** I used a `select` above without explaining it. Chapter 7.
+So: **the test must reach `Wait` before it parks.** The test goroutine holds the bubble open. If you block on a channel nothing will ever deliver on, you get a deadlock failure instead of the assertion you wanted, and that failure is about your test, not about the term.
 
 ---
 
@@ -585,8 +572,8 @@ You will do this. Everyone does this.
 - The dot is a prefix: the only sequencing we have, and it freezes everything to its right.
 - A process is a function that takes names and returns nothing. `go` is parallel composition; a plain call is the dot.
 - Church-Rosser doesn't hold, and that's the point rather than a problem.
-- `synctest.Wait()` plus `select`/`default` buys you sound negative assertions about concurrent code.
+- `synctest.Wait()` plus `select`/`default` magics a normal-form checker into existence.
 
 ## Next
 
-Chapter 2: the dot, properly. What is a continuation actually *for*, why is `x(z).P` a binder from the same family as `λz.P`, and what breaks if you leave the `P` off the end.
+Chapter 2: the dot, properly. What is a continuation actually *for*, why is `x(z).P` a binder from the same family as `λz.P`, and what breaks if we take the `P`. Off the end.
