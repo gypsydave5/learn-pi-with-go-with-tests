@@ -1,6 +1,6 @@
 # Chapter 1: A name is a channel is a name
 
-**Draft 5.** You need Go 1.25 or later.
+You need Go 1.25 or later.
 
 ## What we're covering
 
@@ -522,9 +522,54 @@ synctest.Wait()
 
 `Wait` blocks until every *other* goroutine in the bubble is **durably blocked**: parked on a channel operation that only another goroutine in the same bubble could ever unblock.
 
-Read that with your π-calculus hat on. When `Wait` returns, no reduction is possible. Nothing can move without the observer moving first. Everything has now been reduced to its simplest form. So for us, used like this, `synctest` is a π-calculus normal form detector, bundled in the Go standard library.
+Or, to put it the way I wish the docs did:
+
+**`synctest.Wait()` means everything that \*can\* happen, \*has\* happened.**
+
+Given what we've offered it, at least. Hand the system something new and there'll be more to do - but until we do, that's the lot.
+
+There's a second thing the bubble does. When your test function returns, `Test` hangs around until every goroutine inside the bubble has finished - and if any of them *can't* finish, it blows the hell up.
+
+Which is to say: **every process in the bubble has to be able to reach `0`** - or, in Go, has to be able to return. No leaving a term half-run. No walking away from a process that's still sat at a dot waiting for something that will never come. The bubble wants the whole thing reduced, and it will fail your test if you don't oblige.
+
+That is a *stricter* rule than the π-calculus has, and it's going to bite us immediately.
 
 (YOU BEAUTIFUL GOPHER YOU YESSSSS GO ON MY SON)
+
+Here's the test we want to write. `Wait`, then look at `out`, then stop - it's about one thing, which is that nothing came out:
+
+```go
+func TestReceiveWithNoSenderIsStuck(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		x := make(Name)
+		out := make(Name)
+
+		go Recv(x, out)
+
+		synctest.Wait()
+
+		select {
+		case <-out:
+			t.Fatal("Recv produced something with no sender")
+		default:
+		}
+	})
+}
+```
+
+Run it:
+
+```
+panic: deadlock: main bubble goroutine has exited but blocked goroutines remain
+```
+
+Well, quite. `Recv` is parked on `<-x` and it will be parked there until the heat death of the universe. It never returns, so the bubble never gets what it wants, and the whole thing goes up.
+
+Which is a bit rich, because a stuck process is perfectly legal in the π-calculus. `x(z).P` with nothing to pair with is a fine term. It's a normal form.
+
+It is not, however, normal for Go. A goroutine parked forever on a channel nobody will ever send to is a bug with a name - a goroutine leak - and the bubble is quite right to shout about it.
+
+So we assert the silence in the middle, and then feed the poor thing so it can finish:
 
 ```go
 func TestReceiveIsStuckUntilSomethingArrives(t *testing.T) {
@@ -552,29 +597,9 @@ func TestReceiveIsStuckUntilSomethingArrives(t *testing.T) {
 }
 ```
 
-No sleep, no timeout, no flake. And there are three moves in there, doing three different jobs.
+No sleep, no timeout, no flake. `Wait` means there's nothing left for it to do, so an empty `out` is a fact rather than a snapshot. Then we hand it the name it was waiting for, and off it goes to `0`.
 
-**It's stuck.** That's `Wait`, and it's the only *positive* assertion available to us. `Wait` returns when nothing in the bubble can move, so reaching the line after it is proof - not a guess, not a hopeful pause - that no reduction is possible. The term is in normal form.
-
-**Nothing's coming out.** That's the `select`/`default`. And now that we know nothing *can* move, an empty `out` means something. It isn't "nothing has happened *yet*", it's "nothing happened, and nothing was going to".
-
-**Stuck because it needed \*this\*.** That's the send on `x`, and it's the one doing the real work. The first two only tell us the process didn't do anything. This one tells us *why* - it was waiting on `x`, specifically, and the proof is that a name on `x` is exactly what set it going again.
-
-Which is a slightly sneaky way of establishing something we can't establish directly. We never inspect the process to see whether it's blocked - we work out what it was waiting for by finding the one thing that unsticks it. Hold that thought until chapter 10, where working out what a process *is* by seeing what it responds to turns out to be the whole game.
-
-And note what we still can't say. We cannot assert that a process is stuck *forever*. Forever isn't a property of a state, it's a claim about every possible future, and no test is going to run for that long. Our own test makes the point rather well: the process looked utterly stuck, right up until we sent something on `x`.
-
-### One hazard, and it will bite you
-
-Try writing that test without the last three lines - just the `Wait` and the `select`, no output on `x` at all. It looks better. It's more obviously about the one thing we're claiming.
-
-It panics.
-
-When the function you handed to `synctest.Test` returns, `Test` waits for every goroutine in the bubble to finish. Our `Recv` is parked on `<-x` and will be parked there until the heat death of the universe, so it never finishes, and `Test` quite correctly calls that a deadlock.
-
-Which is awkward, because a stuck process is legal in the π-calculus. `x(z).P` with nothing to pair with is a perfectly respectable term. It's just that a bubble insists on tidying up after itself: **every process you start inside one has to be able to reach `0` before the test ends.**
-
-So we assert the stuckness in the middle and let the process finish afterwards. Slightly annoying, and probably the right constraint anyway - it's the same instinct as not leaking goroutines in real code, which is a thing we'll take seriously in chapter 6.
+Mildly annoying, and probably the right constraint anyway - it's the same instinct as not leaking goroutines in real code, which we'll take properly seriously in chapter 6.
 
 ------
 
