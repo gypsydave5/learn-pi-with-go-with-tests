@@ -599,6 +599,8 @@ func TestReceiveIsStuckUntilSomethingArrives(t *testing.T) {
 
 No sleep, no timeout, no flake. `Wait` means there's nothing left for it to do, so an empty `out` is a fact rather than a snapshot. Then we hand it the name it was waiting for, and off it goes to `0`.
 
+You might wonder why that's `x <- y` and not `go Send(x, y)`. Because the test isn't a process. It's the observer, standing outside the system, handing things in and watching what comes back - so it uses the raw channel operations rather than the process functions. `Send` and `Recv` are for things that live *in* the term. If you ever catch yourself writing `go` inside a test, you've added a process to the system, and you should mean it.
+
 Mildly annoying, and probably the right constraint anyway - it's the same instinct as not leaking goroutines in real code, which we'll take properly seriously in chapter 6.
 
 ------
@@ -608,7 +610,7 @@ Mildly annoying, and probably the right constraint anyway - it's the same instin
 1. **Chain of three.** Pass a name through `Recv` and then onward to a second process before it reaches `out`. How many channels did you need? Why that many?
 2. **Delete the `go`.** In `TestTwoProcessesCommunicate`, call `Send(x, y)` directly instead of spawning it. Predict the failure before you run it. Then run it. Was it the failure you predicted?
 3. **Both inputs.** Extend `TestTwoInputsOneOutput` with a second `Send`. Now both inputs can be satisfied. Does the non-determinism go away? Write out the reductions and say precisely what has and hasn't changed.
-4. **Break the good test.** Make `TestReceiveIsStuckUntilSomethingArrives` fail by adding exactly one line to the test body. What does that tell you about what it's really asserting?
+4. **Break the silence.** Add one line to `TestReceiveIsStuckUntilSomethingArrives`, somewhere before the `synctest.Wait()`, that makes the `t.Fatal` in the `select` actually fire. Then write down, in a sentence, what that `select` was claiming all along.
 
 ------
 
