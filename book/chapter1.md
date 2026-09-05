@@ -33,7 +33,7 @@ name-is-a-channel/
 
 Every chapter is self-contained. Chapter 5 will redefine `Name` rather than importing it from here - a bit of duplication, in exchange for being able to drop in anywhere.
 
-------
+---
 
 ## Why bother?
 
@@ -82,7 +82,7 @@ The π-calculus is what happens when you allow one more thing: port names can be
 
 [^ccs]: CCS is worth a look on its own account if you like this stuff - it's simpler than the π-calculus and the bisimulation material is easier to meet there first. Milner's *A Calculus of Communicating Systems* (1980) is the original; *Communication and Concurrency* (1989) is the more approachable rewrite. Note that both have titles confusingly close to the π-calculus book, *Communicating and Mobile Systems* (1999).
 
-------
+---
 
 ## So what do we actually need?
 
@@ -121,7 +121,7 @@ requests <- Request{Data: "hello", Reply: make(chan Response)}
 
 A reply channel. It's more exciting than it looks: **you just sent a channel over a channel.** You handed a stranger the means of getting back to you. Before that send, nothing in the receiving goroutine could have referred to your reply channel - there was no expression it could have written. After it, there is. Channels aren't just piping and wiring, they're first-class values in Go.
 
-You've met this shape before under other names. It's continuation-passing: rather than returning a value, you're handed somewhere to *put* the answer, and you put it there. It's also, at a grubbier scale, a webhook - here's a URL, call me back on it. The pattern keeps turning up because it's the only way to get an answer to someone whose address you didn't previously have.
+You've met this shape before under other names. It's a webhook - here's a URL, call me back on it. The pattern keeps turning up because it's the only way to get an answer to somebody whose address you didn't previously have.
 
 So: what if a channel is the *only* thing you can send?
 
@@ -143,7 +143,7 @@ s := make(Name)
 
 Crikey, that was easy.
 
-------
+---
 
 ## The only thing that happens
 
@@ -190,8 +190,8 @@ A dot, a `.`, is "and then". `x̄⟨y⟩.P` reads *output `y` on `x`, and then c
 If "and then `P`" makes it look like we're *naming* the process `P`, that's the notation being unhelpful and your eyes are working fine. `P` is a variable - akshually a **metavariable**, which is to say it belongs to the language we use to talk about terms, not to the terms themselves. It stands in for however much more of a process there is, and in a real process you'd just fill it in:
 
 ```
-x̄⟨y⟩.P            where P is w̄⟨v⟩.0 ... so we just say
-x̄⟨y⟩.w̄⟨v⟩.0       the same term, written out
+x̄⟨y⟩.P            where P is w̄⟨q⟩.0 ... so we just say
+x̄⟨y⟩.w̄⟨q⟩.0       the same term, written out
 ```
 
 There's no `P` left in the finished thing.[^defs]
@@ -250,7 +250,7 @@ Same rule, but in fancy lambda-land it's called a β-reduction, and it's what ha
 
 The π-calculus takes β-reduction and splits it into two halves that have to go and find each other first. Everything difficult and everything interesting falls out of that one change.
 
-------
+---
 
 ## The first test
 
@@ -287,7 +287,7 @@ Three things to notice.
 
 **Nothing is waiting on anything else.** The output and the input found each other because there was exactly one of each. That won't last.
 
-------
+---
 
 ## What a process is in Go
 
@@ -327,7 +327,7 @@ func SomeProcess(x Name, y Name)
 
 Which of those does it read from? Which does it write to? Both? Neither? You can't tell, and neither can the compiler, because there's one type and it hasn't got a direction. That should bother you a little, and we'll fix it with some types (but not how you're thinking). But first let's work on the untyped calculus.
 
-------
+---
 
 ## Your turn
 
@@ -373,7 +373,7 @@ func Recv(ch Name, out Name)
 
 Each one is a line or two. Have fun!
 
-------
+---
 
 ## The race, in the flesh
 
@@ -477,7 +477,7 @@ Same answer. That's not luck, it's Church-Rosser: whenever a λ-term forks, the 
 
 Our term forks and stays forked. That's the difference, and it isn't a defect we clean up in a later chapter - it's the reason the book exists. A calculus that couldn't express this couldn't describe two people trying to book the last seat on a flight, which is most of what computers do all day.
 
-------
+---
 
 ## Testing that nothing happens
 
@@ -524,7 +524,7 @@ synctest.Wait()
 
 Or, to put it the way I wish the docs did:
 
-**`synctest.Wait()` means everything that \*can\* happen, \*has\* happened.**
+**`synctest.Wait()` means everything that *can* happen, *has* happened.**
 
 Given what we've offered it, at least. Hand the system something new and there'll be more to do - but until we do, that's the lot.
 
@@ -603,16 +603,19 @@ You might wonder why that's `x <- y` and not `go Send(x, y)`. Because the test i
 
 Mildly annoying, and probably the right constraint anyway - it's the same instinct as not leaking goroutines in real code, which we'll take properly seriously in chapter 6.
 
-------
+---
 
 ## Exercises
 
 1. **Chain of three.** Pass a name through `Recv` and then onward to a second process before it reaches `out`. How many channels did you need? Why that many?
+
 2. **Delete the `go`.** In `TestTwoProcessesCommunicate`, call `Send(x, y)` directly instead of spawning it. Predict the failure before you run it. Then run it. Was it the failure you predicted?
+
 3. **Both inputs.** Extend `TestTwoInputsOneOutput` with a second `Send`. Now both inputs can be satisfied. Does the non-determinism go away? Write out the reductions and say precisely what has and hasn't changed.
+
 4. **Break the silence.** Add one line to `TestReceiveIsStuckUntilSomethingArrives`, somewhere before the `synctest.Wait()`, that makes the `t.Fatal` in the `select` actually fire. Then write down, in a sentence, what that `select` was claiming all along.
 
-------
+---
 
 ## Recap
 
@@ -625,4 +628,4 @@ Mildly annoying, and probably the right constraint anyway - it's the same instin
 
 ## Next
 
-Chapter 2: the dot, properly. What is a continuation actually *for*, why is `x(z).P` a binder from the same family as `λz.P`, and what breaks if we take the `P` off the end.
+Chapter 2: the dot, properly. What is a continuation actually *for*, where does a name come from, and what breaks if we take the `P` off the end.
